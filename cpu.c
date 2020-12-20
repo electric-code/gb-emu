@@ -35,257 +35,10 @@ static uint8_t *h, *l;
 static uint16_t pc = 0x100; /* program counter */
 static uint16_t sp; /* stack pointer */
 
-/* condition functions */
-static bool cc_nz(void) { return !(*f & ZF); }
-static bool cc_z(void) { return *f & ZF; }
-static bool cc_nc(void) { return !(*f & CF); }
-static bool cc_c(void) { return *f & CF; }
-
-static void zero(uint8_t arg) {
-  if (arg == 0x00) {
-    *f |= ZF;
-  } else {
-    *f &= ~ZF;
-  }
-}
-
-static void carry(uint8_t arg1, uint8_t arg2) {
-  if ((uint16_t)(arg1 & 0xff) + (uint16_t)(arg2 & 0xff) > 0xff) {
-    *f |= CF;
-  } else {
-    *f &= ~CF;
-  }
-}
-
-static void half_carry(uint8_t arg1, uint8_t arg2) {
-  if ((arg1 & 0x0f) + (arg2 & 0x0f) > 0x0f) {
-    *f |= HF;
-  } else {
-    *f &= ~HF;
-  }
-}
-
-static void borrow(uint8_t arg1, uint8_t arg2) {
-  if (arg1 < arg2) {
-    *f |= CF;
-  } else {
-    *f &= ~CF;
-  }
-}
-
-static void half_borrow(uint8_t arg1, uint8_t arg2) {
-  if ((arg1 & 0x0f) < (arg2 & 0x0f)) {
-    *f |= HF;
-  } else {
-    *f &= ~HF;
-  }
-}
-
-/* alu functions */
-
-static void a_add(uint8_t arg) {
-  carry(*a, arg);
-  half_carry(*a, arg);
-  *a += arg;
-  zero(*a);
-  *f &= ~NF;
-}
-
-static void a_adc(uint8_t arg) {
-  uint16_t c = (uint16_t)(*f & CF ? 1 : 0);
-  if ((uint16_t)*a + (uint16_t)arg + c > 0xff) {
-    *f |= CF;
-  } else {
-    *f &= ~CF;
-  }
-  if ((uint16_t)(*a & 0x0f) + (uint16_t)(arg & 0x0f) + c > 0x0f) {
-    *f |= HF;
-  } else {
-    *f &= ~HF;
-  }
-  *a = ((uint16_t)*a + (uint16_t)arg + c) & 0xff;
-  zero(*a);
-  *f &= ~NF;
-}
-
-static void a_sub(uint8_t arg) {
-  borrow(*a, arg);
-  half_borrow(*a, arg);
-  *a -= arg;
-  zero(*a);
-  *f |= NF;
-}
-
-static void a_sbc(uint8_t arg) {
-  uint16_t c = (uint16_t)(*f & CF ? 1 : 0);
-  if ((uint16_t)*a < (uint16_t)arg + c) {
-    *f |= CF;
-  } else {
-    *f &= ~CF;
-  }
-  if ((uint16_t)(*a & 0x0f) < (uint16_t)(arg & 0x0f) + c) {
-    *f |= HF;
-  } else {
-    *f &= ~HF;
-  }
-  *a = ((uint16_t)*a - (uint16_t)arg - c) & 0xff;
-  zero(*a);
-  *f |= NF;
-}
-
-static void a_and(uint8_t arg) {
-  *a &= arg;
-  zero(*a);
-  *f &= ~NF;
-  *f |= HF;
-  *f &= ~CF;
-}
-
-static void a_xor(uint8_t arg) {
-  *a ^= arg;
-  zero(*a);
-  *f &= ~NF;
-  *f &= ~HF;
-  *f &= ~CF;
-}
-
-static void a_or(uint8_t arg) {
-  *a |= arg;
-  zero(*a);
-  *f &= ~NF;
-  *f &= ~HF;
-  *f &= ~CF;
-}
-
-static void a_cp(uint8_t arg) {
-  borrow(*a, arg);
-  half_borrow(*a, arg);
-  zero(*a - arg);
-  *f |= NF;
-}
-
-static void r_rlc(uint8_t *arg) {
-  uint8_t t = *arg << 1;
-  if (*arg & 0x80) {
-    t |= 1;
-    *f |= CF;
-  } else {
-    t &= ~1;
-    *f &= ~CF;
-  }
-  *f &= ~HF;
-  *f &= ~NF;
-  zero(t);
-  *arg = t;
-}
-
-static void r_rrc(uint8_t *arg) {
-  uint8_t t = *arg >> 1;
-  if (*arg & 0x01) {
-    t |= 0x80;
-    *f |= CF;
-  } else {
-    *f &= ~CF;
-  }
-  *f &= ~HF;
-  *f &= ~NF;
-  zero(t);
-  *arg = t;
-}
-
-static void r_rl(uint8_t *arg) {
-  uint8_t t = (*arg << 1);
-  if (*f & CF) {
-    t |= 1;
-  }
-  if (*arg & 0x80) {
-    *f |= CF;
-  } else {
-    *f &= ~CF;
-  }
-  *f &= ~NF;
-  *f &= ~HF;
-  zero(t);
-  *arg = t;
-}
-
-static void r_rr(uint8_t *arg) {
-  uint8_t t = *arg >> 1;
-  if (*f & CF)
-    t |= 0x80;
-  else
-    t &= ~0x80;
-  *f &= ~NF;
-  *f &= ~HF;
-  if (*arg & 1)
-    *f |= CF;
-  else
-    *f &= ~CF;
-  *arg = t;
-  zero(*arg);
-}
-
-static void r_sla(uint8_t *arg) {
-  uint8_t t = *arg << 1;
-  if (*arg & 0x80) {
-    *f |= CF;
-  } else {
-    *f &= ~CF;
-  }
-  *f &= ~NF;
-  *f &= ~HF;
-  zero(t);
-  *arg = t;
-}
-
-static void r_sra(uint8_t *arg) {
-  uint8_t c = *arg & 0x01;
-  uint8_t t = (*arg >> 1) | (*arg & 0x80);
-  if (c) {
-    *f |= CF;
-  } else {
-    *f &= ~CF;
-  }
-  *f &= ~HF;
-  *f &= ~NF;
-  zero(t);
-  *arg = t;
-}
-
-static void r_swap(uint8_t *arg) {
-  uint8_t t = *arg;
-  *arg ^= *arg;
-  *arg |= (t >> 4) & 0xf;
-  *arg |= (t & 0xf) << 4;
-  zero(*arg);
-  *f &= ~NF;
-  *f &= ~HF;
-  *f &= ~CF;
-}
-
-static void r_srl(uint8_t *arg) {
-  if (*arg & 1) {
-    *f |= CF;
-  } else {
-    *f &= ~CF;
-  }
-  *arg >>= 1;
-  zero(*arg);
-  *f &= ~NF;
-  *f &= ~HF;
-}
-
-#define HL_IND_IDX 6
-
 /* register tables */
 static uint8_t *r[8];
 static uint16_t *rp[4] = { &bc, &de, &hl, &sp };
 static uint16_t *rp2[4] = { &bc, &de, &hl, &af };
-
-/* function tables */
-static bool (*cc[4])(void) = { &cc_nz, &cc_z, &cc_nc, &cc_c };
-static void (*alu[8])(uint8_t) = { &a_add, &a_adc, &a_sub, &a_sbc, &a_and, &a_xor, &a_or, &a_cp };
-static void (*rot[8])(uint8_t *) = { &r_rlc, &r_rrc, &r_rl, &r_rr, &r_sla, &r_sra, &r_swap, &r_srl };
 
 static bool is_little_endian(void) {
   volatile uint32_t i = 0x01234567;
@@ -294,23 +47,23 @@ static bool is_little_endian(void) {
 
 static void __attribute__((__constructor__)) gb_cpu_init(void) {
   if (is_little_endian()) {
-    a = &((uint8_t *) &af)[1];
-    f = &((uint8_t *) &af)[0];
-    b = &((uint8_t *) &bc)[1];
-    c = &((uint8_t *) &bc)[0];
-    d = &((uint8_t *) &de)[1];
-    e = &((uint8_t *) &de)[0];
-    h = &((uint8_t *) &hl)[1];
-    l = &((uint8_t *) &hl)[0];
+    a = ((uint8_t *) &af + 1);
+    f = ((uint8_t *) &af + 0);
+    b = ((uint8_t *) &bc + 1);
+    c = ((uint8_t *) &bc + 0);
+    d = ((uint8_t *) &de + 1);
+    e = ((uint8_t *) &de + 0);
+    h = ((uint8_t *) &hl + 1);
+    l = ((uint8_t *) &hl + 0);
   } else {
-    a = &((uint8_t *) &af)[0];
-    f = &((uint8_t *) &af)[1];
-    b = &((uint8_t *) &bc)[0];
-    c = &((uint8_t *) &bc)[1];
-    d = &((uint8_t *) &de)[0];
-    e = &((uint8_t *) &de)[1];
-    h = &((uint8_t *) &hl)[0];
-    l = &((uint8_t *) &hl)[1];
+    a = ((uint8_t *) &af + 0);
+    f = ((uint8_t *) &af + 1);
+    b = ((uint8_t *) &bc + 0);
+    c = ((uint8_t *) &bc + 1);
+    d = ((uint8_t *) &de + 0);
+    e = ((uint8_t *) &de + 1);
+    h = ((uint8_t *) &hl + 0);
+    l = ((uint8_t *) &hl + 1);
   }
 
   r[0] = b;
@@ -331,6 +84,253 @@ static void __attribute__((__constructor__)) gb_cpu_init(void) {
 #define e (*e)
 #define h (*h)
 #define l (*l)
+
+/* condition functions */
+static bool cc_nz(void) { return !(f & ZF); }
+static bool cc_z(void) { return f & ZF; }
+static bool cc_nc(void) { return !(f & CF); }
+static bool cc_c(void) { return f & CF; }
+
+static void zero(uint8_t arg) {
+  if (arg == 0x00) {
+    f |= ZF;
+  } else {
+    f &= ~ZF;
+  }
+}
+
+static void carry(uint8_t arg1, uint8_t arg2) {
+  if ((uint16_t)(arg1 & 0xff) + (uint16_t)(arg2 & 0xff) > 0xff) {
+    f |= CF;
+  } else {
+    f &= ~CF;
+  }
+}
+
+static void half_carry(uint8_t arg1, uint8_t arg2) {
+  if ((arg1 & 0x0f) + (arg2 & 0x0f) > 0x0f) {
+    f |= HF;
+  } else {
+    f &= ~HF;
+  }
+}
+
+static void borrow(uint8_t arg1, uint8_t arg2) {
+  if (arg1 < arg2) {
+    f |= CF;
+  } else {
+    f &= ~CF;
+  }
+}
+
+static void half_borrow(uint8_t arg1, uint8_t arg2) {
+  if ((arg1 & 0x0f) < (arg2 & 0x0f)) {
+    f |= HF;
+  } else {
+    f &= ~HF;
+  }
+}
+
+/* alu functions */
+
+static void a_add(uint8_t arg) {
+  carry(a, arg);
+  half_carry(a, arg);
+  a += arg;
+  zero(a);
+  f &= ~NF;
+}
+
+static void a_adc(uint8_t arg) {
+  uint16_t cf = (uint16_t)(f & CF ? 1 : 0);
+  if ((uint16_t)a + (uint16_t)arg + cf > 0xff) {
+    f |= CF;
+  } else {
+    f &= ~CF;
+  }
+  if ((uint16_t)(a & 0x0f) + (uint16_t)(arg & 0x0f) + cf > 0x0f) {
+    f |= HF;
+  } else {
+    f &= ~HF;
+  }
+  a = ((uint16_t)a + (uint16_t)arg + cf) & 0xff;
+  zero(a);
+  f &= ~NF;
+}
+
+static void a_sub(uint8_t arg) {
+  borrow(a, arg);
+  half_borrow(a, arg);
+  a -= arg;
+  zero(a);
+  f |= NF;
+}
+
+static void a_sbc(uint8_t arg) {
+  uint16_t cf = (uint16_t)(f & CF ? 1 : 0);
+  if ((uint16_t)a < (uint16_t)arg + cf) {
+    f |= CF;
+  } else {
+    f &= ~CF;
+  }
+  if ((uint16_t)(a & 0x0f) < (uint16_t)(arg & 0x0f) + cf) {
+    f |= HF;
+  } else {
+    f &= ~HF;
+  }
+  a = ((uint16_t)a - (uint16_t)arg - cf) & 0xff;
+  zero(a);
+  f |= NF;
+}
+
+static void a_and(uint8_t arg) {
+  a &= arg;
+  zero(a);
+  f &= ~NF;
+  f |= HF;
+  f &= ~CF;
+}
+
+static void a_xor(uint8_t arg) {
+  a ^= arg;
+  zero(a);
+  f &= ~NF;
+  f &= ~HF;
+  f &= ~CF;
+}
+
+static void a_or(uint8_t arg) {
+  a |= arg;
+  zero(a);
+  f &= ~NF;
+  f &= ~HF;
+  f &= ~CF;
+}
+
+static void a_cp(uint8_t arg) {
+  borrow(a, arg);
+  half_borrow(a, arg);
+  zero(a - arg);
+  f |= NF;
+}
+
+static void r_rlc(uint8_t *arg) {
+  uint8_t t = *arg << 1;
+  if (*arg & 0x80) {
+    t |= 1;
+    f |= CF;
+  } else {
+    t &= ~1;
+    f &= ~CF;
+  }
+  f &= ~HF;
+  f &= ~NF;
+  zero(t);
+  *arg = t;
+}
+
+static void r_rrc(uint8_t *arg) {
+  uint8_t t = *arg >> 1;
+  if (*arg & 0x01) {
+    t |= 0x80;
+    f |= CF;
+  } else {
+    f &= ~CF;
+  }
+  f &= ~HF;
+  f &= ~NF;
+  zero(t);
+  *arg = t;
+}
+
+static void r_rl(uint8_t *arg) {
+  uint8_t t = (*arg << 1);
+  if (f & CF) {
+    t |= 1;
+  }
+  if (*arg & 0x80) {
+    f |= CF;
+  } else {
+    f &= ~CF;
+  }
+  f &= ~NF;
+  f &= ~HF;
+  zero(t);
+  *arg = t;
+}
+
+static void r_rr(uint8_t *arg) {
+  uint8_t t = *arg >> 1;
+  if (f & CF)
+    t |= 0x80;
+  else
+    t &= ~0x80;
+  f &= ~NF;
+  f &= ~HF;
+  if (*arg & 1)
+    f |= CF;
+  else
+    f &= ~CF;
+  *arg = t;
+  zero(*arg);
+}
+
+static void r_sla(uint8_t *arg) {
+  uint8_t t = *arg << 1;
+  if (*arg & 0x80) {
+    f |= CF;
+  } else {
+    f &= ~CF;
+  }
+  f &= ~NF;
+  f &= ~HF;
+  zero(t);
+  *arg = t;
+}
+
+static void r_sra(uint8_t *arg) {
+  uint8_t cf = *arg & 0x01;
+  uint8_t t = (*arg >> 1) | (*arg & 0x80);
+  if (cf) {
+    f |= CF;
+  } else {
+    f &= ~CF;
+  }
+  f &= ~HF;
+  f &= ~NF;
+  zero(t);
+  *arg = t;
+}
+
+static void r_swap(uint8_t *arg) {
+  uint8_t t = *arg;
+  *arg ^= *arg;
+  *arg |= (t >> 4) & 0xf;
+  *arg |= (t & 0xf) << 4;
+  zero(*arg);
+  f &= ~NF;
+  f &= ~HF;
+  f &= ~CF;
+}
+
+static void r_srl(uint8_t *arg) {
+  if (*arg & 1) {
+    f |= CF;
+  } else {
+    f &= ~CF;
+  }
+  *arg >>= 1;
+  zero(*arg);
+  f &= ~NF;
+  f &= ~HF;
+}
+
+#define HL_IND_IDX 6
+
+/* function tables */
+static bool (*cc[4])(void) = { &cc_nz, &cc_z, &cc_nc, &cc_c };
+static void (*alu[8])(uint8_t) = { &a_add, &a_adc, &a_sub, &a_sbc, &a_and, &a_xor, &a_or, &a_cp };
+static void (*rot[8])(uint8_t *) = { &r_rlc, &r_rrc, &r_rl, &r_rr, &r_sla, &r_sra, &r_swap, &r_srl };
 
 static uint8_t x, y, z, p, q;
 static bool inc = true;
@@ -690,7 +690,7 @@ static void x3(void) {
       }
       break;
     case 6:
-      (*alu[y])(gb_rb(pc + 1));
+      (alu[y])(gb_rb(pc + 1));
       break;
     case 7:
       push16(pc + 1);
@@ -701,9 +701,6 @@ static void x3(void) {
 }
 
 uint8_t len[UCHAR_MAX + 1] = {
-/*
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, A, B, C, D, E, F
-*/
   1, 3, 1, 1, 1, 1, 2, 1, 3, 1, 1, 1, 1, 1, 2, 1,
   2, 3, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 1, 2, 1,
   2, 3, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 1, 2, 1,
@@ -750,7 +747,7 @@ void gb_cpu_tick(void) {
         }
         break;
       case 2:
-        (*alu[y])(*r[z]);
+        (alu[y])(*r[z]);
         break;
       case 3:
         x3();
