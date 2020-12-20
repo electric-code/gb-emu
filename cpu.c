@@ -275,24 +275,44 @@ static void r_srl(uint8_t *arg) {
   *f &= ~HF;
 }
 
-/* register tables */
 #define HL_IND_IDX 6
+
+/* register tables */
 static uint8_t *r[8];
 static uint16_t *rp[4] = { &bc, &de, &hl, &sp };
 static uint16_t *rp2[4] = { &bc, &de, &hl, &af };
+
+/* function tables */
 static bool (*cc[4])(void) = { &cc_nz, &cc_z, &cc_nc, &cc_c };
 static void (*alu[8])(uint8_t) = { &a_add, &a_adc, &a_sub, &a_sbc, &a_and, &a_xor, &a_or, &a_cp };
 static void (*rot[8])(uint8_t *) = { &r_rlc, &r_rrc, &r_rl, &r_rr, &r_sla, &r_sra, &r_swap, &r_srl };
 
+static bool is_little_endian(void) {
+  volatile uint32_t i = 0x01234567;
+  return (*((uint8_t *)(&i))) == 0x67;
+}
+
 static void __attribute__((__constructor__)) gb_cpu_init(void) {
-  a = &((uint8_t *) &af)[1];
-  f = &((uint8_t *) &af)[0];
-  b = &((uint8_t *) &bc)[1];
-  c = &((uint8_t *) &bc)[0];
-  d = &((uint8_t *) &de)[1];
-  e = &((uint8_t *) &de)[0];
-  h = &((uint8_t *) &hl)[1];
-  l = &((uint8_t *) &hl)[0];
+  if (is_little_endian()) {
+    a = &((uint8_t *) &af)[1];
+    f = &((uint8_t *) &af)[0];
+    b = &((uint8_t *) &bc)[1];
+    c = &((uint8_t *) &bc)[0];
+    d = &((uint8_t *) &de)[1];
+    e = &((uint8_t *) &de)[0];
+    h = &((uint8_t *) &hl)[1];
+    l = &((uint8_t *) &hl)[0];
+  } else {
+    a = &((uint8_t *) &af)[0];
+    f = &((uint8_t *) &af)[1];
+    b = &((uint8_t *) &bc)[0];
+    c = &((uint8_t *) &bc)[1];
+    d = &((uint8_t *) &de)[0];
+    e = &((uint8_t *) &de)[1];
+    h = &((uint8_t *) &hl)[0];
+    l = &((uint8_t *) &hl)[1];
+  }
+
   r[0] = b;
   r[1] = c;
   r[2] = d;
@@ -315,8 +335,8 @@ static void __attribute__((__constructor__)) gb_cpu_init(void) {
 static uint8_t x, y, z, p, q;
 static bool inc = true;
 
-static void push8(uint8_t arg) { gb_wb(sp--, arg); }
-static uint8_t pop8(void) { return gb_rb(++sp); }
+/* static void push8(uint8_t arg) { gb_wb(sp--, arg); } */
+/* static uint8_t pop8(void) { return gb_rb(++sp); } */
 
 static uint16_t pop16(void) {
   uint16_t nn = gb_rb(sp++);
