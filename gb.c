@@ -5,7 +5,6 @@ uint8_t mem[USHRT_MAX];
 uint8_t gb_rb(uint16_t addr) { return mem[addr]; }
 uint8_t *gb_rb_ptr(uint16_t addr) { return &mem[addr]; }
 void gb_wb(uint16_t addr, uint8_t val) {
-  /* printf("wb %.4x=%.2x\n", addr, val); */
   mem[addr] = val;
   if (addr == 0xff02) fprintf(stderr, "%c", mem[0xff01]);
 }

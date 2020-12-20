@@ -1,4 +1,4 @@
-SOURCES = cpu.c gb.c
+SOURCES = cpu.c str.c gb.c
 OBJECTS = $(SOURCES:.c=.o)
 INCLUDES = cpu.h
 BINARY = gb

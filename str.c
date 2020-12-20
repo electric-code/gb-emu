@@ -1,4 +1,6 @@
-const char *str[UCHAR_MAX + 1] = {
+#include "str.h"
+
+char *str[UCHAR_MAX + 1] = {
     "nop",
     "ld bc,u16",
     "ld (bc),a",
